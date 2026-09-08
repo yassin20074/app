@@ -5,10 +5,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# تثبيت حزم النظام المطلوبة لـ OpenCV و MediaPipe (بما فيها libEGL و libGL)
+# تثبيت كامل حزم النظام الرسومية (GL, EGL, GLES2, GLib)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libegl1 \
+    libgles2 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
