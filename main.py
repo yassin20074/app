@@ -13,9 +13,9 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
 
-# =========================
-# Paths
-# =========================
+"""=========================
+ Paths
+========================="""
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -30,9 +30,9 @@ MODEL_URL = (
 )
 
 
-# =========================
-# Download model once
-# =========================
+"""=========================
+ Download model once
+ ========================="""
 
 def download_model():
     if os.path.exists(MODEL_PATH):
@@ -54,9 +54,9 @@ def download_model():
 download_model()
 
 
-# =========================
-# MediaPipe Face Landmarker
-# =========================
+"""=========================
+ MediaPipe Face Landmarker
+ ========================= """
 
 base_options = python.BaseOptions(
     model_asset_path=MODEL_PATH
@@ -72,9 +72,9 @@ detector = vision.FaceLandmarker.create_from_options(
 )
 
 
-# =========================
-# FastAPI
-# =========================
+"""=========================
+ FastAPI
+ ========================="""
 
 app = FastAPI(
     title="Real-Time VTO Engine",
@@ -82,9 +82,9 @@ app = FastAPI(
 )
 
 
-# =========================
-# CORS
-# =========================
+""" =========================
+ CORS
+========================="""
 
 app.add_middleware(
     CORSMiddleware,
@@ -94,9 +94,9 @@ app.add_middleware(
 )
 
 
-# =========================
-# Health Check
-# =========================
+""" =========================
+ Health Check
+ ========================="""
 
 @app.get("/health")
 async def health():
@@ -106,9 +106,9 @@ async def health():
     }
 
 
-# =========================
-# Process Frame
-# =========================
+""" =========================
+ Process Frame
+========================= """
 
 @app.post("/api/v1/vto/process-frame")
 async def process_frame(
@@ -185,9 +185,9 @@ async def process_frame(
         int(landmarks[6].y * h)
     )
 
-    # =========================
-    # Glasses center
-    # =========================
+    """ =========================
+     Glasses center
+    ========================= """
 
     center_x = int(
         (left_eye[0] + right_eye[0]) / 2
@@ -218,16 +218,16 @@ async def process_frame(
         dist * 2.05
     )
 
-    # =========================
-    # Glasses angle
-    # =========================
+    """ =========================
+     Glasses angle
+    ========================= """
 
     angle = math.degrees(
         math.atan2(dy, dx)
     )
-    # =========================
-    # Response
-    # =========================
+    """ =========================
+     Response
+    ========================= """
 
     return {
         "detected": True,
@@ -238,9 +238,9 @@ async def process_frame(
     }
 
 
-# =========================
-# Run Server
-# =========================
+""" =========================
+ Run Server
+ ========================= """
 
 if __name__ == "__main__":
 
