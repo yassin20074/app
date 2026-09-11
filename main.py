@@ -72,7 +72,7 @@ def process_landmarks(image_bytes: bytes):
 
     h, w, _ = img.shape
 
-    # 1. Resizing: تصغير الصورة لـ max width 480 لرفع السرعة 4x على CPU الـ Free Tier
+ 
     if w > 480:
         scale = 480.0 / w
         new_w = 480
