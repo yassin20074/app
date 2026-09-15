@@ -115,7 +115,6 @@ def process_landmarks(image_bytes: bytes):
         "glasses_width": glasses_width,
         "angle": angle
     }
-
 """=========================
  Optimized Endpoint
 ========================="""
@@ -138,10 +137,11 @@ async def process_frame(payload: FrameURLRequest):
 
         result = await run_in_threadpool(process_landmarks, image_bytes)
         return result
-   except httpx.RequestError as exc:
+
+    except httpx.RequestError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"An error occurred while requesting the image URL: {exc}"
+            detail=f"An error occurred while requesting the image URL: {str(exc)}"
         )
 
 """=========================
