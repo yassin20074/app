@@ -5,10 +5,12 @@ import cv2
 import numpy as np
 import mediapipe as mp
 import uvicorn
+import httpx
 
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel, HttpUrl
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
@@ -33,7 +35,7 @@ def download_model():
 
 download_model()
 
-""" =========================
+"""=========================
  MediaPipe Face Landmarker
 ========================="""
 base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
@@ -44,7 +46,7 @@ options = vision.FaceLandmarkerOptions(
 detector = vision.FaceLandmarker.create_from_options(options)
 
 """=========================
- FastAPI App
+ FastAPI App & Pydantic Schemas
 ========================="""
 app = FastAPI(title="Real-Time VTO Engine", version="1.0.0")
 
@@ -55,6 +57,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class FrameURLRequest(BaseModel):
+    image_url: HttpUrl
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "vto"}
@@ -63,7 +68,6 @@ async def health():
  Synchronous Processing Worker
 ========================="""
 def process_landmarks(image_bytes: bytes):
-    # تحويل خفيف للغاية للبيانات
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
@@ -72,7 +76,6 @@ def process_landmarks(image_bytes: bytes):
 
     h, w, _ = img.shape
 
- 
     if w > 480:
         scale = 480.0 / w
         new_w = 480
@@ -80,11 +83,9 @@ def process_landmarks(image_bytes: bytes):
         img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
         h, w = new_h, new_w
 
-    # BGR to RGB
     rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_img)
 
-    # Inference
     detection_result = detector.detect(mp_image)
 
     if not detection_result.face_landmarks:
@@ -92,7 +93,6 @@ def process_landmarks(image_bytes: bytes):
 
     landmarks = detection_result.face_landmarks[0]
 
-    # نقاط العين والأنف
     left_eye = (int(landmarks[33].x * w), int(landmarks[33].y * h))
     right_eye = (int(landmarks[263].x * w), int(landmarks[263].y * h))
     nose_bridge = (int(landmarks[6].x * w), int(landmarks[6].y * h))
@@ -120,15 +120,33 @@ def process_landmarks(image_bytes: bytes):
  Optimized Endpoint
 ========================="""
 @app.post("/api/v1/vto/process-frame")
-async def process_frame(file: UploadFile = File(...)):
-    contents = await file.read()
-    if not contents:
-        return {"detected": False}
+async def process_frame(payload: FrameURLRequest):
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(str(payload.image_url))
+            
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Failed to fetch image from URL. HTTP Status: {response.status_code}"
+                )
+            
+            image_bytes = response.content
 
-    # تشغيل الحسابات في ThreadPool لعدم خنق الـ Event Loop
-    result = await run_in_threadpool(process_landmarks, contents)
-    return result
+        if not image_bytes:
+            return {"detected": False}
 
+        result = await run_in_threadpool(process_landmarks, image_bytes)
+        return result
+   except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"An error occurred while requesting the image URL: {exc}"
+        )
+
+"""=========================
+ Run Server
+========================="""
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port)
