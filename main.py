@@ -115,6 +115,7 @@ def process_landmarks(image_bytes: bytes):
         "glasses_width": glasses_width,
         "angle": angle
     }
+
 """=========================
  Optimized Endpoint
 ========================="""
@@ -137,11 +138,11 @@ async def process_frame(payload: FrameURLRequest):
 
         result = await run_in_threadpool(process_landmarks, image_bytes)
         return result
-
     except httpx.RequestError as exc:
+     
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"An error occurred while requesting the image URL: {str(exc)}"
+            detail=f"An error occurred while requesting the image URL: {exc}"
         )
 
 """=========================
@@ -149,4 +150,6 @@ async def process_frame(payload: FrameURLRequest):
 ========================="""
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)
+
+ 
