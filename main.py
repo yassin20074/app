@@ -36,9 +36,11 @@ download_model()
 """=========================
  MediaPipe Face Landmarker
 ========================="""
+# استخدام IMAGE mode الخفيف للـ Single Frame processing
 base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
 options = vision.FaceLandmarkerOptions(
     base_options=base_options,
+    running_mode=vision.RunningMode.IMAGE,
     num_faces=1
 )
 detector = vision.FaceLandmarker.create_from_options(options)
@@ -60,24 +62,27 @@ async def health():
     return {"status": "ok", "service": "vto"}
 
 """=========================
- Synchronous Processing Worker
+ Optimized Processing Worker
 ========================="""
 def process_landmarks(image_bytes: bytes):
+    # Decode المباشر كـ RGB لتوفير تحويلcvtColor الزائد
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
     if img is None:
         return {"detected": False}
 
-    h, w, _ = img.shape
+    h, w = img.shape[:2]
 
-    if w > 480:
-        scale = 480.0 / w
-        new_w = 480
+    # تصغير الحجم فوراً لو الفرونت إند بعت صورة كبيرة
+    if w > 320:
+        scale = 320.0 / w
+        new_w = 320
         new_h = int(h * scale)
-        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
         h, w = new_h, new_w
 
+    # تحويل لـ RGB
     rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_img)
 
@@ -88,17 +93,18 @@ def process_landmarks(image_bytes: bytes):
 
     landmarks = detection_result.face_landmarks[0]
 
-    left_eye = (int(landmarks[33].x * w), int(landmarks[33].y * h))
-    right_eye = (int(landmarks[263].x * w), int(landmarks[263].y * h))
-    nose_bridge = (int(landmarks[6].x * w), int(landmarks[6].y * h))
+    # استخراج النقاط المطلوبة للنظارة
+    left_x, left_y = int(landmarks[33].x * w), int(landmarks[33].y * h)
+    right_x, right_y = int(landmarks[263].x * w), int(landmarks[263].y * h)
+    nose_y = int(landmarks[6].y * h)
 
-    center_x = int((left_eye[0] + right_eye[0]) / 2)
-    eye_mid_y = (left_eye[1] + right_eye[1]) / 2
-    center_y = int(nose_bridge[1] * 0.7 + eye_mid_y * 0.3)
+    center_x = (left_x + right_x) // 2
+    eye_mid_y = (left_y + right_y) / 2.0
+    center_y = int(nose_y * 0.7 + eye_mid_y * 0.3)
 
-    dx = right_eye[0] - left_eye[0]
-    dy = right_eye[1] - left_eye[1]
-    dist = math.sqrt(dx**2 + dy**2)
+    dx = right_x - left_x
+    dy = right_y - left_y
+    dist = math.hypot(dx, dy)
 
     glasses_width = int(dist * 2.05)
     angle = math.degrees(math.atan2(dy, dx))
@@ -121,17 +127,13 @@ async def process_frame(file: UploadFile = File(...)):
         if not image_bytes:
             return {"detected": False}
 
-        result = await run_in_threadpool(process_landmarks, image_bytes)
-        return result
+        return await run_in_threadpool(process_landmarks, image_bytes)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error processing frame: {str(exc)}"
         )
 
-"""=========================
- Run Server
-========================="""
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
