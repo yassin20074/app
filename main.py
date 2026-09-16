@@ -5,12 +5,10 @@ import cv2
 import numpy as np
 import mediapipe as mp
 import uvicorn
-import httpx
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, File, UploadFile, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, HttpUrl
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
@@ -46,7 +44,7 @@ options = vision.FaceLandmarkerOptions(
 detector = vision.FaceLandmarker.create_from_options(options)
 
 """=========================
- FastAPI App & Pydantic Schemas
+ FastAPI App Setup
 ========================="""
 app = FastAPI(title="Real-Time VTO Engine", version="1.0.0")
 
@@ -56,9 +54,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-class FrameURLRequest(BaseModel):
-    image_url: HttpUrl
 
 @app.get("/health")
 async def health():
@@ -117,32 +112,21 @@ def process_landmarks(image_bytes: bytes):
     }
 
 """=========================
- Optimized Endpoint
+ Direct File Upload Endpoint
 ========================="""
 @app.post("/api/v1/vto/process-frame")
-async def process_frame(payload: FrameURLRequest):
+async def process_frame(file: UploadFile = File(...)):
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(str(payload.image_url))
-            
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Failed to fetch image from URL. HTTP Status: {response.status_code}"
-                )
-            
-            image_bytes = response.content
-
+        image_bytes = await file.read()
         if not image_bytes:
             return {"detected": False}
 
         result = await run_in_threadpool(process_landmarks, image_bytes)
         return result
-    except httpx.RequestError as exc:
-     
+    except Exception as exc:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"An error occurred while requesting the image URL: {exc}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error processing frame: {str(exc)}"
         )
 
 """=========================
@@ -151,5 +135,3 @@ async def process_frame(payload: FrameURLRequest):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
- 
